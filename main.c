@@ -110,27 +110,26 @@ int main(void) {
     	char* inputJobString;
 		char** inputTokens;
     	char* input = readline("# ");
-
+    	
     	if (input != NULL) {
     		inputJobString = strdup(input);		// Points to a duplicate of the input string, use as ->jobString later
     	}
-
+    	// printf("input is: %s\n", input);
     	// Ctrl+D generates EOF ==> should exit shell
     	if (input == NULL) {
     		printf("\n");
-    		printf("Dont tell me I'm in here\n");
+    		// printf("Input is null, exiting the shell\n\n");
     		break;
     	}
-
-    	int numTokens = GetInputTokens(&input, &inputTokens);
     	
+    	int numTokens = GetInputTokens(&input, &inputTokens);   
+    	// printf("The number of tokens is: %d\n", numTokens); 
 
     	if (*inputTokens[numTokens-1] == '&') {
     		bgJob = true;
     		inputTokens[numTokens-1] = NULL;	// Remove "&" from the input
     		numTokens--;
     	}
-
 
     	if (strcmp(inputTokens[0], "fg") == 0) {
     		// Need to signal the most recently backgrounded/stopped process to continue
@@ -148,14 +147,6 @@ int main(void) {
 
 	    		waitpid(-(recentJob->pgid), &status, WUNTRACED);
 	    		mostRecentFgJob = recentJob->jobId;
-
-	    		// if (!WIFSTOPPED(status)) {
-	    		// 	mostRecentFgJob = 0;
-	    		// 	initJob(jobsList[topJobId-1]);
-	    		// 	printf("When does this happen?\n");
-	    		// 	// Stack manipulation for finished fg jobs done in sigHandler
-	    		// 	// free(recentJob);
-	    		// }
 	    	}
 
 	    	continue;
@@ -189,7 +180,7 @@ int main(void) {
     		continue;
     	}
 
-
+   
     	if (strcmp(inputTokens[0], "jobs") == 0) {
    			manageJobs();
    			continue;
@@ -208,6 +199,7 @@ int main(void) {
 
     	cpidLeft = run(currProcess, pipefds, -1);
     	setpgid(cpidLeft, 0);	// Create process group with pgid = cpidLeft
+    	// printf("The pgid of the child is: %d\n", getpgid(cpidLeft));
     	if (currProcess->pipeIndex != -1) {
     		cpidRight = run(pipeRightProcess, pipefds, cpidLeft);
     		setpgid(cpidRight, getpgid(cpidLeft));
@@ -234,15 +226,8 @@ int main(void) {
     		mostRecentFgJob = newJob->jobId;
     		// printf("mostRecentFgJob should have been set, value is: %d\n", mostRecentFgJob);
     		waitpid(-cpidLeft, &status, WUNTRACED);
-    		// Remove the job if it is running in the foreground and it gets to finish
-    		// if (!WIFSTOPPED(status)) {
-    		// 	initJob(jobsList[nextIndex]);
-    		// 	mostRecentJob = getMostRecentJob();		// Will be 0 if there are no active jobs
-    		// 	mostRecentFgJob = 0;
-    		// 	printf("Does this hit before or\n");
-    		// }
     	}
-
+    	// printf("\n\n");
     	free(currProcess->argv);
     	// free(currProcess);
     	free(inputTokens);
@@ -381,9 +366,7 @@ int run(process* currProcess, int pipefds[], int pgid) {
 	pid_t pid = fork();
 
 	if (pid == 0) {
-		// printf("The pid of the current child is: %d \n", pid);
 		if (pgid != -1) {
-			// printf("In run(), about to set the pgid of right process to: %d\n", pgid);
 			int verifySetPgid = setpgid(0, pgid);	// Add to left process' group
 		}
 		if (pgid == -1) {
@@ -393,15 +376,14 @@ int run(process* currProcess, int pipefds[], int pgid) {
 		// Set up pipe properly
 		if (currProcess->pipeSide == LEFT) {
 			close(pipefds[0]);		// Close read end of the pipe
-			dup2(pipefds[1], 1);	// Output will flow into the pipe
+			dup2(pipefds[1], 1);	
 		}
 		else if (currProcess->pipeSide == RIGHT) {
 			close(pipefds[1]); 		// Close write end of the pipe
-			dup2(pipefds[0], 0);	// Input of the right side of the pipe should come from the left
+			dup2(pipefds[0], 0);	
 		}
 
 		// Set up file redirects
-		// if (currProcess->pipeIndex == -1) {
 		if (currProcess->stdOutFile != NULL) {
 			int outFileDescriptor = open(currProcess->stdOutFile, O_CREAT | O_WRONLY | O_TRUNC, 
 											S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
@@ -412,6 +394,7 @@ int run(process* currProcess, int pipefds[], int pgid) {
 			int inFileDescriptor = open(currProcess->stdInFile, O_RDONLY);
 			// File does not exist
 			if (inFileDescriptor == -1) {
+				exit(-1);
 				return -1;
 			}
 			dup2(inFileDescriptor, 0);
@@ -425,11 +408,14 @@ int run(process* currProcess, int pipefds[], int pgid) {
 		// setpgid(0, 0);
 		int exec_code = execvp(currProcess->command, currProcess->argv);
 		if (exec_code == -1) {
+			printf("Exec code is -1\n");
 			exit(-1);
 		}
-		// }
 	}
-	// wait(NULL);
+	else if (pid == -1) {
+		printf("Fork failed\n");
+	}
+	
 	return pid;		// Returns the child's pid
 }
 
@@ -584,9 +570,8 @@ void sigHandler(int signalName) {
 		case SIGCHLD:
 			// WHERE MY BABIES @
 			for (int i = 0; i < 20; i++) {
-				
 				int pgid = waitpid(-(jobsList[i]->pgid), 0, WNOHANG);
-
+				
 				if (pgid == jobsList[i]->pgid) {
 					mostRecentJob = getMostRecentJob();
 					mostRecentFgJob = 0;
@@ -603,11 +588,14 @@ void sigHandler(int signalName) {
 					if (jobsList[i]->isBg) { 
 						jobsList[i]->status = DONE;
 					}
+
 					else if (!jobsList[i]->isBg) {
+						// printf("The job that just finished is: %s\n", jobsList[i]->jobString);
 						initJob(jobsList[i]);
 					}
 				}
 			}
+
 			break;
 
 		// CTRL+Z only applies to what is controlling the terminal
