@@ -1,8 +1,5 @@
-main: main.o
-	gcc -o main main.c -lreadline
-
-main.o: main.c
-	gcc -c main.c
+yash: yash.c
+	gcc -o yash yash.c -lreadline
 
 clean:
-	rm *.o main
+	rm yash
